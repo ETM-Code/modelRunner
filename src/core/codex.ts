@@ -1,4 +1,5 @@
 import type { AgentConfig } from "./types";
+import { makeSandboxedEnv } from "./sandbox";
 
 export async function runCodex(
   config: AgentConfig,
@@ -14,13 +15,24 @@ export async function runCodex(
     args.push("-m", config.model);
   }
 
+  // Set working directory for sandboxed agents
+  if (config.sandbox?.enabled) {
+    args.push("--cd", config.sandbox.workDir);
+  }
+
   const fullPrompt = config.systemPrompt
     ? `${config.systemPrompt}\n\n${prompt}`
     : prompt;
 
   args.push(fullPrompt);
 
-  const env = { ...process.env };
+  // Build environment
+  let env: Record<string, string | undefined>;
+  if (config.sandbox?.enabled) {
+    env = makeSandboxedEnv();
+  } else {
+    env = { ...process.env };
+  }
   delete env.CLAUDECODE;
   delete env.CLAUDE_CODE_ENTRYPOINT;
 

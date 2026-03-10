@@ -1,4 +1,5 @@
 import type { AgentConfig } from "./types";
+import { makeSandboxedEnv } from "./sandbox";
 
 export async function runClaude(
   config: AgentConfig,
@@ -22,17 +23,30 @@ export async function runClaude(
     args.push("--max-cost", String(config.maxBudget));
   }
 
-  const env = { ...process.env };
+  // Build environment
+  let env: Record<string, string | undefined>;
+  if (config.sandbox?.enabled) {
+    env = makeSandboxedEnv();
+  } else {
+    env = { ...process.env };
+  }
   delete env.CLAUDECODE;
   delete env.CLAUDE_CODE_ENTRYPOINT;
 
   args.push(prompt);
 
-  const proc = Bun.spawn(["claude", ...args], {
+  const spawnOpts: any = {
     stdout: "pipe",
     stderr: "pipe",
     env,
-  });
+  };
+
+  // Set cwd for sandboxed agents
+  if (config.sandbox?.enabled) {
+    spawnOpts.cwd = config.sandbox.workDir;
+  }
+
+  const proc = Bun.spawn(["claude", ...args], spawnOpts);
 
   const stdout = await new Response(proc.stdout).text();
   const exitCode = await proc.exited;

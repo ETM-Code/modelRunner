@@ -1,0 +1,70 @@
+import { mkdtemp, rm } from "fs/promises";
+import { join } from "path";
+import { tmpdir } from "os";
+import type { SandboxConfig } from "./types";
+
+// Env vars to strip for sandboxed agents — credentials they shouldn't touch
+const STRIPPED_ENV_VARS = [
+  "GH_TOKEN",
+  "GITHUB_TOKEN",
+  "GITHUB_ENTERPRISE_TOKEN",
+  "GH_ENTERPRISE_TOKEN",
+  "HOMEBREW_GITHUB_API_TOKEN",
+  "NPM_TOKEN",
+  "NODE_AUTH_TOKEN",
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
+  "AWS_SESSION_TOKEN",
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "SUPABASE_SERVICE_ROLE_KEY",
+  "DATABASE_URL",
+  "SSH_AUTH_SOCK",
+];
+
+export async function createSandbox(sessionId: string, agentLabel: string): Promise<SandboxConfig> {
+  const prefix = join(tmpdir(), `modelrunner-${sessionId}-${agentLabel}-`);
+  const workDir = await mkdtemp(prefix);
+  return { enabled: true, workDir };
+}
+
+export function makeSandboxedEnv(): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = { ...process.env };
+
+  // Strip credentials
+  for (const key of STRIPPED_ENV_VARS) {
+    delete env[key];
+  }
+
+  // Also strip any key that looks like a token/secret
+  for (const key of Object.keys(env)) {
+    const lower = key.toLowerCase();
+    if (
+      (lower.includes("token") || lower.includes("secret") || lower.includes("password") || lower.includes("credential")) &&
+      !lower.includes("path") // don't strip PATH-like vars
+    ) {
+      delete env[key];
+    }
+  }
+
+  return env;
+}
+
+export async function cleanupSandbox(sandbox: SandboxConfig): Promise<void> {
+  try {
+    await rm(sandbox.workDir, { recursive: true, force: true });
+  } catch {
+    // best effort
+  }
+}
+
+export const SANDBOX_SYSTEM_PROMPT_SUFFIX = `
+
+SANDBOX RULES:
+- You are running in a sandboxed environment. Your working directory is a temporary sandbox.
+- You may READ files anywhere on the filesystem for reference.
+- You may only WRITE or CREATE files within your current working directory.
+- Do NOT attempt to modify files outside your working directory.
+- Do NOT attempt to use git push, gh, or any commands that interact with remote services or credentials.
+- You DO have access to web search and can fetch URLs for research.
+- Focus on research, analysis, and reasoning. Write code/files in your sandbox if it helps your analysis.`;
