@@ -25,6 +25,11 @@ const STRIPPED_ENV_VARS = [
 export async function createSandbox(sessionId: string, agentLabel: string): Promise<SandboxConfig> {
   const prefix = join(tmpdir(), `modelrunner-${sessionId}-${agentLabel}-`);
   const workDir = await mkdtemp(prefix);
+
+  // Init a git repo so Codex doesn't refuse to run
+  const proc = Bun.spawn(["git", "init"], { cwd: workDir, stdout: "pipe", stderr: "pipe" });
+  await proc.exited;
+
   return { enabled: true, workDir };
 }
 
