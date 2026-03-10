@@ -222,11 +222,67 @@ modelrunner serve --port 7420
 | `--model` | Model name | backend default |
 | `--tools` | Enable tool use | `false` |
 
+## Remote Deployment
+
+Run modelRunner on a remote server via SSH + tmux. One command to set up, one to start.
+
+### Quick Setup
+
+```bash
+# First-time setup — installs bun, clones repo, installs deps
+modelrunner remote setup --host myserver
+
+# Start the API server in a tmux session
+modelrunner remote start --host myserver
+
+# Check status
+modelrunner remote status --host myserver
+
+# Attach to the live tmux session
+modelrunner remote attach --host myserver
+
+# Run a debate on the server in a new tmux window
+modelrunner remote run --host myserver debate "Should AI be open source?" --max-rounds 5
+
+# View logs / stop / restart
+modelrunner remote logs --host myserver
+modelrunner remote stop --host myserver
+modelrunner remote restart --host myserver
+```
+
+### Remote Options
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--host` | SSH host (e.g. `ada`, `user@server.com`) | required |
+| `--port` | Server port on remote | `7420` |
+| `--session` | tmux session name | `modelrunner` |
+| `--dir` | Install directory on remote | `~/modelrunner` |
+| `--repo` | Git repo URL (for `setup`) | `ETM-Code/modelRunner` |
+
+### Using the Scripts Directly
+
+If you're already on the server, use the scripts directly:
+
+```bash
+# First-time setup
+bash scripts/setup.sh --repo https://github.com/yourfork/modelRunner.git
+
+# Manage the tmux server session
+bash scripts/server.sh start --port 8080
+bash scripts/server.sh status
+bash scripts/server.sh attach
+bash scripts/server.sh run debate "Topic" --max-rounds 3
+bash scripts/server.sh stop
+```
+
+The server script also supports environment variables: `MODELRUNNER_PORT`, `MODELRUNNER_SESSION`, `MODELRUNNER_DIR`.
+
 ## Architecture
 
 ```
 src/
-├── index.ts              # CLI entry point, argument parsing
+├── index.ts              # CLI entry point, argument parsing, remote subcommand
 ├── server.ts             # HTTP/SSE server
 ├── core/
 │   ├── types.ts          # Type definitions
@@ -241,6 +297,9 @@ src/
 │   └── critique.ts       # Critique loop orchestration
 └── util/
     └── logger.ts         # Colored terminal output
+scripts/
+├── setup.sh              # First-time server setup (bun, repo, deps)
+└── server.sh             # tmux session management (start/stop/attach/logs)
 ```
 
 ## Use Cases

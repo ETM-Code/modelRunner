@@ -9,6 +9,8 @@ import { startServer } from "./server";
 import { listSessions, loadSession } from "./core/session";
 import * as log from "./util/logger";
 import { readFile } from "fs/promises";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 
 function parseArgs(args: string[]): { flags: Record<string, string>; positional: string[] } {
   const flags: Record<string, string> = {};
@@ -45,6 +47,24 @@ Usage:
   modelrunner sessions <id>
   modelrunner resume <id>
   modelrunner serve [--port <port>]
+  modelrunner remote <action> --host <host> [options]
+
+Remote actions:
+  setup     Install bun, clone repo, install deps on remote host
+  start     Start server in tmux on remote host
+  stop      Stop the remote tmux session
+  restart   Restart the remote server
+  status    Check if remote server is running
+  attach    SSH into the remote tmux session (interactive)
+  logs      Show recent remote server logs
+  run       Run a modelrunner command in a remote tmux window
+
+Remote options:
+  --host          SSH host (e.g. ada, user@server.com) [required]
+  --port          Server port on remote (default: 7420)
+  --session       tmux session name (default: modelrunner)
+  --dir           Install directory on remote (default: ~/modelrunner)
+  --repo          Git repo URL for setup (default: project's origin)
 
 Debate options:
   --agent1            First agent backend (default: claude)
@@ -299,6 +319,127 @@ async function main() {
     case "serve": {
       const port = parseInt(flags.port ?? "7420", 10);
       startServer(port);
+      break;
+    }
+
+    case "remote": {
+      const action = positional[0];
+      const host = flags.host;
+
+      if (!host) {
+        log.error("Missing --host. Usage: modelrunner remote <action> --host <hostname>");
+        process.exit(1);
+      }
+
+      if (!action) {
+        log.error("Missing action. Use: setup, start, stop, restart, status, attach, logs, run");
+        process.exit(1);
+      }
+
+      const remotePort = flags.port ?? "7420";
+      const remoteSession = flags.session ?? "modelrunner";
+      const remoteDir = flags.dir ?? "~/modelrunner";
+
+      // Resolve the scripts directory relative to this file
+      const __dirname = dirname(fileURLToPath(import.meta.url));
+      const scriptsDir = resolve(__dirname, "..", "scripts");
+
+      const serverOpts = `--port ${remotePort} --session ${remoteSession} --dir ${remoteDir}`;
+
+      switch (action) {
+        case "setup": {
+          const repoUrl = flags.repo ?? "";
+          const repoFlag = repoUrl ? `--repo ${repoUrl}` : "";
+          const dirFlag = `--dir ${remoteDir}`;
+
+          log.header(`Setting up modelRunner on ${host}...`);
+
+          // Copy setup script to remote and run it
+          const scp = Bun.spawnSync(["scp", `${scriptsDir}/setup.sh`, `${host}:/tmp/modelrunner-setup.sh`]);
+          if (scp.exitCode !== 0) {
+            log.error(`Failed to copy setup script: ${scp.stderr.toString()}`);
+            process.exit(1);
+          }
+
+          const proc = Bun.spawn(["ssh", "-t", host, `bash /tmp/modelrunner-setup.sh ${repoFlag} ${dirFlag}`], {
+            stdin: "inherit",
+            stdout: "inherit",
+            stderr: "inherit",
+          });
+          const exitCode = await proc.exited;
+          process.exit(exitCode);
+        }
+
+        case "start":
+        case "stop":
+        case "restart":
+        case "status":
+        case "logs": {
+          log.header(`${action} on ${host}...`);
+
+          // Copy server.sh to remote, then run the action
+          const scp2 = Bun.spawnSync(["scp", `${scriptsDir}/server.sh`, `${host}:/tmp/modelrunner-server.sh`]);
+          if (scp2.exitCode !== 0) {
+            log.error(`Failed to copy server script: ${scp2.stderr.toString()}`);
+            process.exit(1);
+          }
+
+          const extraArgs = action === "logs" ? (positional[1] ?? "50") : "";
+          const proc2 = Bun.spawn(["ssh", host, `bash /tmp/modelrunner-server.sh ${action} ${serverOpts} ${extraArgs}`], {
+            stdin: "inherit",
+            stdout: "inherit",
+            stderr: "inherit",
+          });
+          const exitCode2 = await proc2.exited;
+          process.exit(exitCode2);
+        }
+
+        case "attach": {
+          // Interactive SSH with TTY allocation
+          const scp3 = Bun.spawnSync(["scp", `${scriptsDir}/server.sh`, `${host}:/tmp/modelrunner-server.sh`]);
+          if (scp3.exitCode !== 0) {
+            log.error(`Failed to copy server script: ${scp3.stderr.toString()}`);
+            process.exit(1);
+          }
+
+          const proc3 = Bun.spawn(["ssh", "-t", host, `bash /tmp/modelrunner-server.sh attach --session ${remoteSession}`], {
+            stdin: "inherit",
+            stdout: "inherit",
+            stderr: "inherit",
+          });
+          const exitCode3 = await proc3.exited;
+          process.exit(exitCode3);
+        }
+
+        case "run": {
+          // Remaining positional args are the modelrunner command
+          const runArgs = positional.slice(1).join(" ");
+          if (!runArgs) {
+            log.error("Usage: modelrunner remote run --host <host> <modelrunner-command...>");
+            log.info('Example: modelrunner remote run --host ada debate "Is Rust better than Go?"');
+            process.exit(1);
+          }
+
+          const scp4 = Bun.spawnSync(["scp", `${scriptsDir}/server.sh`, `${host}:/tmp/modelrunner-server.sh`]);
+          if (scp4.exitCode !== 0) {
+            log.error(`Failed to copy server script: ${scp4.stderr.toString()}`);
+            process.exit(1);
+          }
+
+          const proc4 = Bun.spawn(["ssh", host, `bash /tmp/modelrunner-server.sh run ${serverOpts} ${runArgs}`], {
+            stdin: "inherit",
+            stdout: "inherit",
+            stderr: "inherit",
+          });
+          const exitCode4 = await proc4.exited;
+          process.exit(exitCode4);
+        }
+
+        default:
+          log.error(`Unknown remote action: ${action}`);
+          log.info("Actions: setup, start, stop, restart, status, attach, logs, run");
+          process.exit(1);
+      }
       break;
     }
 
