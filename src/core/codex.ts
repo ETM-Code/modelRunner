@@ -1,5 +1,6 @@
 import type { AgentConfig } from "./types";
 import { makeSandboxedEnv } from "./sandbox";
+import { RateLimitError, detectRateLimit } from "./errors";
 
 export async function runCodex(
   config: AgentConfig,
@@ -47,6 +48,11 @@ export async function runCodex(
 
   if (exitCode !== 0) {
     const stderr = await new Response(proc.stderr).text();
+    const combined = `${stderr}\n${stdout}`;
+    const retryMs = detectRateLimit(combined);
+    if (retryMs !== null) {
+      throw new RateLimitError(`Codex rate limited: ${stderr.slice(0, 200)}`, retryMs);
+    }
     throw new Error(`Codex exited with code ${exitCode}: ${stderr}`);
   }
 

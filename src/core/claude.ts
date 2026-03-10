@@ -1,5 +1,6 @@
 import type { AgentConfig } from "./types";
 import { makeSandboxedEnv } from "./sandbox";
+import { RateLimitError, detectRateLimit } from "./errors";
 
 export async function runClaude(
   config: AgentConfig,
@@ -53,6 +54,12 @@ export async function runClaude(
 
   if (exitCode !== 0) {
     const stderr = await new Response(proc.stderr).text();
+    // Also check stdout for rate limit info (some errors come through stdout)
+    const combined = `${stderr}\n${stdout}`;
+    const retryMs = detectRateLimit(combined);
+    if (retryMs !== null) {
+      throw new RateLimitError(`Claude rate limited: ${stderr.slice(0, 200)}`, retryMs);
+    }
     throw new Error(`Claude exited with code ${exitCode}: ${stderr}`);
   }
 

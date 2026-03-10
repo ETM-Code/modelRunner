@@ -1,4 +1,5 @@
 import type { AgentConfig, DebateConfig, CritiqueConfig, DebateRound } from "./core/types";
+import { RateLimitError } from "./core/errors";
 import { singlePrompt } from "./modes/prompt";
 import { debate } from "./modes/debate";
 import { critique } from "./modes/critique";
@@ -179,11 +180,24 @@ async function processQueue() {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      const isRateLimit = err instanceof RateLimitError;
+
+      if (isRateLimit) {
+        const waitMs = (err as RateLimitError).retryAfterMs;
+        log.error(`[Queue] Rate limited on: ${next.label ?? next.id}`);
+        log.info(`[Queue] Pausing queue for ${Math.round(waitMs / 1000)}s before retry...`);
+        next.retries++;
+        next.status = "queued"; // always re-queue rate limits regardless of retry count
+        await saveQueue();
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue; // skip the normal pause, go straight to next job
+      }
+
       log.error(`[Queue] Failed: ${next.label ?? next.id} — ${msg}`);
 
       if (next.retries < next.maxRetries) {
         next.retries++;
-        next.status = "queued"; // re-queue for retry
+        next.status = "queued";
         log.info(`[Queue] Retrying (${next.retries}/${next.maxRetries}): ${next.label ?? next.id}`);
       } else {
         next.status = "error";
