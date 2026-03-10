@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import type { AgentConfig, ContrarianConfig } from "./core/types";
-import { createSandbox } from "./core/sandbox";
+import { createSandbox, createSharedSandbox } from "./core/sandbox";
 import { singlePrompt } from "./modes/prompt";
 import { debate } from "./modes/debate";
 import { critique } from "./modes/critique";
@@ -46,7 +46,7 @@ Usage:
   modelrunner sessions [--limit <n>]
   modelrunner sessions <id>
   modelrunner resume <id>
-  modelrunner serve [--port <port>]
+  modelrunner serve [--port <port>]        # Start server with job queue
   modelrunner remote <action> --host <host> [options]
 
 Remote actions:
@@ -178,7 +178,13 @@ async function main() {
       const tempId = crypto.randomUUID().slice(0, 8);
 
       // Set up sandboxes if requested
-      if (sandboxEnabled) {
+      const sharedSandboxEnabled = flags["shared-sandbox"] === "true";
+      if (sharedSandboxEnabled) {
+        // Shared sandbox — both agents work in the same directory
+        const shared = await createSharedSandbox(tempId);
+        agent1.sandbox = shared;
+        agent2.sandbox = shared;
+      } else if (sandboxEnabled) {
         agent1.sandbox = await createSandbox(tempId, "agentA");
         agent2.sandbox = await createSandbox(tempId, "agentB");
       }
@@ -193,8 +199,11 @@ async function main() {
           model: flags["contrarian-model"],
           tools: true, // contrarian always gets tools for research
         };
-        if (sandboxEnabled) {
-          contrarian.sandbox = await createSandbox(tempId, "contrarian");
+        if (sandboxEnabled || sharedSandboxEnabled) {
+          // Contrarian shares the sandbox if shared, otherwise gets its own
+          contrarian.sandbox = sharedSandboxEnabled
+            ? agent1.sandbox
+            : await createSandbox(tempId, "contrarian");
         }
       }
 

@@ -1,7 +1,7 @@
 import type { AgentConfig, ContrarianConfig, DebateConfig, DebateRound, Transcript } from "../core/types";
 import { runAgent } from "../core/engine";
 import { createSession, appendRound, completeSession, getResumeState } from "../core/session";
-import { createSandbox, cleanupSandbox, SANDBOX_SYSTEM_PROMPT_SUFFIX } from "../core/sandbox";
+import { createSandbox, cleanupSandbox, SANDBOX_SYSTEM_PROMPT_SUFFIX, SHARED_SANDBOX_SYSTEM_PROMPT_SUFFIX } from "../core/sandbox";
 import * as log from "../util/logger";
 
 export interface DebateOptions {
@@ -24,8 +24,9 @@ function buildExploratoryPrompts(
   topic: string,
   contextBlock: string,
   sandboxed: boolean,
+  sharedSandbox: boolean = false,
 ): { promptA: string; promptB: string } {
-  const sandboxSuffix = sandboxed ? SANDBOX_SYSTEM_PROMPT_SUFFIX : "";
+  const sandboxSuffix = sharedSandbox ? SHARED_SANDBOX_SYSTEM_PROMPT_SUFFIX : sandboxed ? SANDBOX_SYSTEM_PROMPT_SUFFIX : "";
 
   const promptA = `You are Agent A in an exploratory debate on the topic: "${topic}"
 
@@ -54,8 +55,9 @@ function buildAdversarialPrompts(
   topic: string,
   contextBlock: string,
   sandboxed: boolean,
+  sharedSandbox: boolean = false,
 ): { promptA: string; promptB: string } {
-  const sandboxSuffix = sandboxed ? SANDBOX_SYSTEM_PROMPT_SUFFIX : "";
+  const sandboxSuffix = sharedSandbox ? SHARED_SANDBOX_SYSTEM_PROMPT_SUFFIX : sandboxed ? SANDBOX_SYSTEM_PROMPT_SUFFIX : "";
 
   const promptA = `You are debating the topic: "${topic}". You argue FOR this position. Engage with your opponent's arguments directly. If you become genuinely convinced by their reasoning, respond with CONCEDE. Otherwise, make your strongest case.
 
@@ -72,8 +74,9 @@ function buildContrarianPrompt(
   topic: string,
   transcriptSoFar: string,
   sandboxed: boolean,
+  sharedSandbox: boolean = false,
 ): string {
-  const sandboxSuffix = sandboxed ? SANDBOX_SYSTEM_PROMPT_SUFFIX : "";
+  const sandboxSuffix = sharedSandbox ? SHARED_SANDBOX_SYSTEM_PROMPT_SUFFIX : sandboxed ? SANDBOX_SYSTEM_PROMPT_SUFFIX : "";
 
   return `You are the CONTRARIAN in a debate about: "${topic}"
 
@@ -103,13 +106,14 @@ export async function debate(config: DebateConfig, opts?: DebateOptions): Promis
   const { topic, maxRounds, style = "exploratory", context, contextMode = "none", contrarian } = config;
 
   const sandboxed = config.agent1.sandbox?.enabled || config.agent2.sandbox?.enabled || false;
+  const sharedSandbox = sandboxed && config.agent1.sandbox?.workDir === config.agent2.sandbox?.workDir;
   const contextBlock = buildContextBlock(context ?? "", contextMode);
 
   // Build system prompts based on style
   const { promptA, promptB } =
     style === "exploratory"
-      ? buildExploratoryPrompts(topic, contextBlock, sandboxed)
-      : buildAdversarialPrompts(topic, contextBlock, sandboxed);
+      ? buildExploratoryPrompts(topic, contextBlock, sandboxed, sharedSandbox)
+      : buildAdversarialPrompts(topic, contextBlock, sandboxed, sharedSandbox);
 
   const agentA: AgentConfig = { ...config.agent1, systemPrompt: promptA };
   const agentB: AgentConfig = { ...config.agent2, systemPrompt: promptB };
@@ -219,6 +223,7 @@ export async function debate(config: DebateConfig, opts?: DebateOptions): Promis
             topic,
             formatTranscriptForContrarian(rounds),
             contrarian.sandbox?.enabled ?? false,
+            sharedSandbox,
           ),
         };
 
