@@ -2,6 +2,8 @@ import type { AgentConfig, ContrarianConfig, DebateConfig, DebateRound, Transcri
 import { runAgent } from "../core/engine";
 import { createSession, appendRound, completeSession, getResumeState } from "../core/session";
 import { createSandbox, cleanupSandbox, SANDBOX_SYSTEM_PROMPT_SUFFIX, SHARED_SANDBOX_SYSTEM_PROMPT_SUFFIX } from "../core/sandbox";
+import { mkdir } from "fs/promises";
+import { existsSync } from "fs";
 import * as log from "../util/logger";
 
 export interface DebateOptions {
@@ -102,8 +104,23 @@ function formatTranscriptForContrarian(rounds: DebateRound[]): string {
     .join("\n\n---\n\n");
 }
 
+async function ensureSandboxDir(sandbox: { enabled: boolean; workDir: string } | undefined): Promise<void> {
+  if (!sandbox?.enabled) return;
+  if (!existsSync(sandbox.workDir)) {
+    await mkdir(sandbox.workDir, { recursive: true });
+    // Re-init git for codex compatibility
+    const proc = Bun.spawn(["git", "init"], { cwd: sandbox.workDir, stdout: "pipe", stderr: "pipe" });
+    await proc.exited;
+  }
+}
+
 export async function debate(config: DebateConfig, opts?: DebateOptions): Promise<Transcript & { sessionId: string }> {
   const { topic, maxRounds, style = "exploratory", context, contextMode = "none", contrarian } = config;
+
+  // Restore sandbox dirs if they were cleaned up (e.g. resuming a session)
+  await ensureSandboxDir(config.agent1.sandbox);
+  await ensureSandboxDir(config.agent2.sandbox);
+  if (contrarian?.sandbox) await ensureSandboxDir(contrarian.sandbox);
 
   const sandboxed = config.agent1.sandbox?.enabled || config.agent2.sandbox?.enabled || false;
   const sharedSandbox = sandboxed && config.agent1.sandbox?.workDir === config.agent2.sandbox?.workDir;

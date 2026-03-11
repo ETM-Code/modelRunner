@@ -47,7 +47,9 @@ export async function runClaude(
     spawnOpts.cwd = config.sandbox.workDir;
   }
 
-  const proc = Bun.spawn(["claude", ...args], spawnOpts);
+  // Use absolute path to avoid PATH issues when running as a daemon
+  const claudeBin = process.env.CLAUDE_BIN ?? "/Users/eoghancollins/.local/bin/claude";
+  const proc = Bun.spawn([claudeBin, ...args], spawnOpts);
 
   const stdout = await new Response(proc.stdout).text();
   const exitCode = await proc.exited;

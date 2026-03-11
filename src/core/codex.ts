@@ -37,7 +37,9 @@ export async function runCodex(
   delete env.CLAUDECODE;
   delete env.CLAUDE_CODE_ENTRYPOINT;
 
-  const proc = Bun.spawn(["codex", ...args], {
+  // Use absolute path to avoid PATH issues when running as a daemon
+  const codexBin = process.env.CODEX_BIN ?? "/opt/homebrew/bin/codex";
+  const proc = Bun.spawn([codexBin, ...args], {
     stdout: "pipe",
     stderr: "pipe",
     env,
