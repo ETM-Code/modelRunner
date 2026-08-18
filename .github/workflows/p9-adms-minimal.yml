@@ -1,0 +1,66 @@
+name: P9 minimal ADMS probe
+
+on:
+  push:
+    branches:
+      - p9-adms-minimal
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adms:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ADMS 2.3.7 with the exact target package set
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p p9-adms-output
+          docker pull python:3.11-slim-bookworm
+          docker image inspect python:3.11-slim-bookworm \
+            --format '{{json .RepoDigests}}' > p9-adms-output/container-image-digests.json
+          docker run --rm \
+            --volume "$PWD/p9-adms-output:/out" \
+            python:3.11-slim-bookworm \
+            bash -lc '
+              set -Eeuo pipefail
+              export DEBIAN_FRONTEND=noninteractive LC_ALL=C
+              apt-get update > /out/apt-update.log
+              apt-get install -y --no-install-recommends \
+                build-essential bison flex curl ca-certificates \
+                cmake ninja-build gfortran \
+                libblas-dev liblapack-dev libfftw3-dev libfl-dev \
+                bc libxml-libxml-perl \
+                > /out/apt-install.log
+              curl -fL --retry 5 \
+                -o /tmp/ADMS-2.3.7.tar.gz \
+                https://codeload.github.com/Qucs/ADMS/tar.gz/refs/tags/release-2.3.7
+              echo "0d24f645d7ce0daa447af1b0cff1123047f3b73cc41cf403650f469721f95173  /tmp/ADMS-2.3.7.tar.gz" \
+                | sha256sum -c - | tee /out/source-hash.txt
+              tar -xzf /tmp/ADMS-2.3.7.tar.gz -C /tmp
+              cmake -S /tmp/ADMS-release-2.3.7 -B /tmp/adms-build -G Ninja \
+                -D CMAKE_BUILD_TYPE=Release \
+                -D CMAKE_INSTALL_PREFIX=/usr/local \
+                -D CMAKE_POLICY_VERSION_MINIMUM=3.5 \
+                > /out/adms-configure.log 2>&1
+              cmake --build /tmp/adms-build -j2 -t install \
+                > /out/adms-build.log 2>&1
+              command -v admsXml | tee /out/adms-path.txt
+              admsXml --version > /out/adms-version.txt 2>&1
+              sha256sum /usr/local/bin/admsXml > /out/adms-executable-sha256.txt
+            '
+      - name: Retain minimal-package evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p9-adms-minimal
+          path: p9-adms-output
+          if-no-files-found: error
+          retention-days: 30
