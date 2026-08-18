@@ -1,0 +1,29 @@
+name: P9 Xyce bootstrap
+
+on:
+  push:
+    branches:
+      - p9-xyce-public-runner
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm runner and pin ADMS archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          uname -a
+          curl -fL --retry 5 \
+            -o /tmp/adms.tar.gz \
+            https://codeload.github.com/Qucs/ADMS/tar.gz/14977bb03b03b8a5f94b6503d5ae44538d22e9fe
+          sha256sum /tmp/adms.tar.gz
