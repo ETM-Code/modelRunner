@@ -1,0 +1,32 @@
+name: P9 Modal public credential probe
+
+on:
+  push:
+    branches:
+      - p9-modal-public-probe
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe credential presence without exposing values
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${MODAL_TOKEN_ID:-}" && -n "${MODAL_TOKEN_SECRET:-}" ]]; then
+            echo MODAL_CREDENTIALS_PRESENT
+          else
+            echo MODAL_CREDENTIALS_ABSENT
+          fi
