@@ -23,7 +23,11 @@ jobs:
         run: |
           set -euo pipefail
           uname -a
+          git ls-remote https://github.com/Qucs/ADMS.git \
+            refs/tags/release-2.3.7 \
+            'refs/tags/release-2.3.7^{}'
           curl -fL --retry 5 \
             -o /tmp/adms.tar.gz \
-            https://codeload.github.com/Qucs/ADMS/tar.gz/14977bb03b03b8a5f94b6503d5ae44538d22e9fe
+            https://codeload.github.com/Qucs/ADMS/tar.gz/refs/tags/release-2.3.7
           sha256sum /tmp/adms.tar.gz
+          tar -tzf /tmp/adms.tar.gz | head -n 3
