@@ -1,4 +1,4 @@
-name: P9 Xyce bootstrap
+name: P9 Xyce execution
 
 on:
   push:
@@ -13,29 +13,32 @@ permissions:
   contents: read
 
 jobs:
-  bootstrap:
+  execute:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
-      - name: Resolve and hash source archives
+
+      - name: Build Xyce 7.10 with ADMS and execute the ReRAM plugin
         shell: bash
         run: |
           set -euo pipefail
-          uname -a
-          git ls-remote https://github.com/Qucs/ADMS.git \
-            refs/tags/release-2.3.7 \
-            'refs/tags/release-2.3.7^{}'
-          git ls-remote https://github.com/google/skywater-pdk-libs-sky130_fd_pr_reram.git \
-            refs/tags/v2.0.3 \
-            'refs/tags/v2.0.3^{}'
-          curl -fL --retry 5 \
-            -o /tmp/adms.tar.gz \
-            https://codeload.github.com/Qucs/ADMS/tar.gz/refs/tags/release-2.3.7
-          curl -fL --retry 5 \
-            -o /tmp/sky130_fd_pr_reram__reram_cell.va \
-            https://raw.githubusercontent.com/google/skywater-pdk-libs-sky130_fd_pr_reram/v2.0.3/cells/reram_cell/sky130_fd_pr_reram__reram_cell.va
-          sha256sum /tmp/adms.tar.gz /tmp/sky130_fd_pr_reram__reram_cell.va
-          tar -tzf /tmp/adms.tar.gz > /tmp/adms-members.txt
-          sed -n '1,3p' /tmp/adms-members.txt
-          grep -n '^module ' /tmp/sky130_fd_pr_reram__reram_cell.va
+          mkdir -p p9-work p9-output
+          docker pull python:3.11-slim-bookworm
+          docker image inspect python:3.11-slim-bookworm \
+            --format '{{json .RepoDigests}}' > p9-output/container-image-digests.json
+          docker run --rm \
+            --volume "$PWD/p9:/p9:ro" \
+            --volume "$PWD/p9-work:/work" \
+            --volume "$PWD/p9-output:/out" \
+            python:3.11-slim-bookworm \
+            bash /p9/build-and-run.sh
+
+      - name: Retain all execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p9-xyce-execution
+          path: p9-output
+          if-no-files-found: error
+          retention-days: 30
