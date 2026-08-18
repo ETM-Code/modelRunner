@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Confirm runner and pin ADMS archive
+      - name: Resolve and hash source archives
         shell: bash
         run: |
           set -euo pipefail
@@ -26,8 +26,16 @@ jobs:
           git ls-remote https://github.com/Qucs/ADMS.git \
             refs/tags/release-2.3.7 \
             'refs/tags/release-2.3.7^{}'
+          git ls-remote https://github.com/google/skywater-pdk-libs-sky130_fd_pr_reram.git \
+            refs/tags/v2.0.3 \
+            'refs/tags/v2.0.3^{}'
           curl -fL --retry 5 \
             -o /tmp/adms.tar.gz \
             https://codeload.github.com/Qucs/ADMS/tar.gz/refs/tags/release-2.3.7
-          sha256sum /tmp/adms.tar.gz
-          tar -tzf /tmp/adms.tar.gz | head -n 3
+          curl -fL --retry 5 \
+            -o /tmp/sky130_fd_pr_reram__reram_cell.va \
+            https://raw.githubusercontent.com/google/skywater-pdk-libs-sky130_fd_pr_reram/v2.0.3/cells/reram_cell/sky130_fd_pr_reram__reram_cell.va
+          sha256sum /tmp/adms.tar.gz /tmp/sky130_fd_pr_reram__reram_cell.va
+          tar -tzf /tmp/adms.tar.gz > /tmp/adms-members.txt
+          sed -n '1,3p' /tmp/adms-members.txt
+          grep -n '^module ' /tmp/sky130_fd_pr_reram__reram_cell.va
