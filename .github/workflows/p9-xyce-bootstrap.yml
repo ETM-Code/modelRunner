@@ -1,0 +1,44 @@
+name: P9 Xyce execution
+
+on:
+  push:
+    branches:
+      - p9-xyce-public-runner
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Xyce 7.10 with ADMS and execute the ReRAM plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p p9-work p9-output
+          docker pull python:3.11-slim-bookworm
+          docker image inspect python:3.11-slim-bookworm \
+            --format '{{json .RepoDigests}}' > p9-output/container-image-digests.json
+          docker run --rm \
+            --volume "$PWD/p9:/p9:ro" \
+            --volume "$PWD/p9-work:/work" \
+            --volume "$PWD/p9-output:/out" \
+            python:3.11-slim-bookworm \
+            bash /p9/build-and-run.sh
+
+      - name: Retain all execution evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p9-xyce-execution
+          path: p9-output
+          if-no-files-found: error
+          retention-days: 30
