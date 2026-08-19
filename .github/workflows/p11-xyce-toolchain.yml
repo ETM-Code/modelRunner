@@ -1,0 +1,23 @@
+name: p11-xyce-toolchain
+
+on:
+  push:
+    branches:
+      - p11-xyce-toolchain-2026-08-19
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Probe runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          uname -a
+          nproc
+          free -h
+          python3 --version
