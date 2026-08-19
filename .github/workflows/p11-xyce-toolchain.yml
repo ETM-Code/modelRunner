@@ -1,15 +1,16 @@
 name: p11-xyce-toolchain
 
 on:
-  push:
+  pull_request:
     branches:
-      - p11-xyce-toolchain-2026-08-19
+      - main
 
 permissions:
   contents: read
 
 jobs:
   probe:
+    if: github.head_ref == 'p11-xyce-toolchain-2026-08-19'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
