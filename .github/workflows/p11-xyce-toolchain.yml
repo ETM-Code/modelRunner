@@ -1,0 +1,50 @@
+name: p11-xyce-toolchain
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  toolchain:
+    if: github.head_ref == 'p11-xyce-toolchain-2026-08-19'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build pinned simulator toolchain
+        shell: bash
+        run: bash ./p11-build-toolchain.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p11-toolchain-linux-x86_64
+          path: |
+            ${{ runner.temp }}/p11-toolchain-out/p11-toolchain-linux-x86_64.tar.zst
+            ${{ runner.temp }}/p11-toolchain-out/p11-toolchain-linux-x86_64.tar.zst.sha256
+            ${{ runner.temp }}/p11-toolchain-out/sizes.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  pdk:
+    if: github.head_ref == 'p11-xyce-toolchain-2026-08-19'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned SKY130 model subset
+        shell: bash
+        run: bash ./p11-fetch-pdk.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p11-sky130-models
+          path: |
+            ${{ runner.temp }}/p11-pdk-out/p11-sky130-models.tar.zst
+            ${{ runner.temp }}/p11-pdk-out/p11-sky130-models.tar.zst.sha256
+            ${{ runner.temp }}/p11-pdk-out/sizes.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
