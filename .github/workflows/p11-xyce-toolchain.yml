@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   toolchain:
-    if: github.head_ref == 'p11-xyce-toolchain-2026-08-19'
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     steps:
@@ -30,7 +29,6 @@ jobs:
           retention-days: 1
 
   pdk:
-    if: github.head_ref == 'p11-xyce-toolchain-2026-08-19'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
