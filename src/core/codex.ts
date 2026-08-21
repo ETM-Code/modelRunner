@@ -21,11 +21,19 @@ export async function runCodex(
     args.push("--cd", config.sandbox.workDir);
   }
 
+  // Attach images if provided
+  if (config.images?.length) {
+    for (const img of config.images) {
+      args.push("-i", img);
+    }
+  }
+
   const fullPrompt = config.systemPrompt
     ? `${config.systemPrompt}\n\n${prompt}`
     : prompt;
 
-  args.push(fullPrompt);
+  // -- stops the CLI from interpreting the prompt as flags (e.g. if it starts with ---)
+  args.push("--", fullPrompt);
 
   // Build environment
   let env: Record<string, string | undefined>;

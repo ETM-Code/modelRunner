@@ -106,7 +106,7 @@ modelrunner <subcommand> [args]
 | `--context` | Context string or path to .txt/.md file | none |
 | `--context-mode` | `open` (use loosely), `strict` (stay grounded), `none` (ignore) | `open` |
 | `--contrarian-every` | Inject contrarian agent every N rounds | disabled |
-| `--contrarian-backend` | Backend for contrarian agent | `codex` |
+| `--contrarian-backend` | Backend for contrarian agent | `grok` (falls back to codex) |
 | `--contrarian-model` | Model for contrarian agent | backend default |
 
 ### General Options
@@ -136,6 +136,8 @@ When `--contrarian-every N` is set:
 - Finds lazy agreements, blind spots, missing alternatives, and echo chamber effects
 - Output is injected into the next round — both debaters see it but aren't obligated to agree
 - Always gets `--tools` for independent research
+- Defaults to Grok: tries `grok-4` (expert mode) first, falls back to `grok-3-fast`, then codex if Grok is unavailable
+- Grok API requires no account or API key (reverse-engineered wrapper at `~/Personal Tools/Grok-Api`)
 
 ### Session Storage
 Sessions are persisted to `~/.modelrunner/sessions/<id>/` with:

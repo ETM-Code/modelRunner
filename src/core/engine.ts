@@ -1,11 +1,11 @@
 import type { AgentConfig, AgentResponse } from "./types";
 import { runCodex } from "./codex";
 import { runClaude } from "./claude";
-import { RateLimitError } from "./errors";
+import { runGrok } from "./grok";
+import { RateLimitError, GrokUnavailableError } from "./errors";
 import * as log from "../util/logger";
 
 const CONCEDE_PATTERN = /\bCONCEDE\b/;
-const MAX_RATE_LIMIT_RETRIES = 5;
 
 function formatWait(ms: number): string {
   if (ms >= 60_000) return `${Math.round(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
@@ -16,27 +16,40 @@ export async function runAgent(
   config: AgentConfig,
   prompt: string,
 ): Promise<AgentResponse> {
-  let lastError: RateLimitError | null = null;
+  let rateLimitHits = 0;
 
-  for (let attempt = 0; attempt <= MAX_RATE_LIMIT_RETRIES; attempt++) {
+  for (;;) {
     try {
-      const rawText =
-        config.backend === "codex"
-          ? await runCodex(config, prompt)
-          : await runClaude(config, prompt);
+      let rawText: string;
+      if (config.backend === "codex") {
+        rawText = await runCodex(config, prompt);
+      } else if (config.backend === "grok") {
+        try {
+          rawText = await runGrok(config, prompt);
+        } catch (err) {
+          if (err instanceof GrokUnavailableError) {
+            log.info(`\x1b[33m[Grok unavailable] Falling back to codex\x1b[0m`);
+            rawText = await runCodex({ ...config, model: undefined }, prompt);
+          } else {
+            throw err;
+          }
+        }
+      } else {
+        rawText = await runClaude(config, prompt);
+      }
 
       return {
         text: rawText,
         conceded: CONCEDE_PATTERN.test(rawText),
       };
     } catch (err) {
-      if (err instanceof RateLimitError && attempt < MAX_RATE_LIMIT_RETRIES) {
-        lastError = err;
+      if (err instanceof RateLimitError) {
+        rateLimitHits++;
         // Add jitter: ±20% randomness to avoid thundering herd
         const jitter = err.retryAfterMs * (0.8 + Math.random() * 0.4);
         const waitMs = Math.round(jitter);
 
-        log.info(`\x1b[33m[Rate limit] ${config.backend} hit rate limit. Waiting ${formatWait(waitMs)} before retry (attempt ${attempt + 1}/${MAX_RATE_LIMIT_RETRIES})...\x1b[0m`);
+        log.info(`\x1b[33m[Rate limit] ${config.backend} hit rate limit. Waiting ${formatWait(waitMs)} before retry (hit #${rateLimitHits})...\x1b[0m`);
 
         await new Promise((r) => setTimeout(r, waitMs));
         continue;
@@ -44,7 +57,4 @@ export async function runAgent(
       throw err;
     }
   }
-
-  // Should never reach here, but just in case
-  throw lastError ?? new Error("Rate limit retries exhausted");
 }

@@ -12,9 +12,10 @@ import { readFile } from "fs/promises";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
-function parseArgs(args: string[]): { flags: Record<string, string>; positional: string[] } {
+function parseArgs(args: string[]): { flags: Record<string, string>; positional: string[]; multi: Record<string, string[]> } {
   const flags: Record<string, string> = {};
   const positional: string[] = [];
+  const multi: Record<string, string[]> = {};
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -23,6 +24,9 @@ function parseArgs(args: string[]): { flags: Record<string, string>; positional:
       const next = args[i + 1];
       if (next && !next.startsWith("--")) {
         flags[key] = next;
+        // Accumulate multi-value flags (e.g. --image a.png --image b.png)
+        if (!multi[key]) multi[key] = [];
+        multi[key].push(next);
         i++;
       } else {
         flags[key] = "true";
@@ -32,7 +36,7 @@ function parseArgs(args: string[]): { flags: Record<string, string>; positional:
     }
   }
 
-  return { flags, positional };
+  return { flags, positional, multi };
 }
 
 function usage() {
@@ -40,7 +44,7 @@ function usage() {
 modelrunner - Agent orchestration tool
 
 Usage:
-  modelrunner prompt <text> [--backend claude|codex] [--model <model>] [--tools]
+  modelrunner prompt <text> [--backend claude|codex] [--model <model>] [--tools] [--image <file>...]
   modelrunner debate <topic> [options]
   modelrunner critique <task> [--creator claude|codex] [--critic claude|codex] [--max-rounds <n>] [--tools]
   modelrunner sessions [--limit <n>]
@@ -76,11 +80,12 @@ Debate options:
   --context           Context string or path to .txt/.md file
   --context-mode      open (default), strict, or none
   --contrarian-every  Inject contrarian agent every N rounds (e.g. 3)
-  --contrarian-backend  Backend for contrarian (default: codex)
+  --contrarian-backend  Backend for contrarian (default: grok, falls back to codex)
 
 General options:
   --backend     Backend for prompt mode (default: claude)
-  --model       Model name (e.g. gpt-5.2, sonnet, opus)
+  --model       Model name (e.g. gpt-5.4, sonnet, opus)
+  --image       Attach image(s) to prompt (repeatable, e.g. --image a.png --image b.png)
   --tools       Enable tool use (codex: --full-auto, claude: --dangerously-skip-permissions)
   --creator     Creator backend for critique (default: codex)
   --critic      Critic backend for critique (default: claude)
@@ -137,7 +142,7 @@ async function main() {
   }
 
   const command = args[0];
-  const { flags, positional } = parseArgs(args.slice(1));
+  const { flags, positional, multi } = parseArgs(args.slice(1));
   const tools = flags.tools === "true";
   const sandboxEnabled = flags.sandbox === "true";
 
@@ -149,6 +154,11 @@ async function main() {
         process.exit(1);
       }
       const config = makeConfig(flags.backend ?? "claude", flags.model, tools);
+      // Attach images if provided (supports multiple --image flags)
+      if (multi.image?.length) {
+        const { resolve: resolvePath } = await import("path");
+        config.images = multi.image.map((p) => resolvePath(p));
+      }
       const result = await singlePrompt(config, text);
       console.log(result);
       break;
@@ -192,10 +202,10 @@ async function main() {
       // Set up contrarian if requested
       let contrarian: ContrarianConfig | undefined;
       if (flags["contrarian-every"]) {
-        const contrarianBackend = flags["contrarian-backend"] ?? "codex";
+        const contrarianBackend = flags["contrarian-backend"] ?? "grok";
         contrarian = {
           every: parseInt(flags["contrarian-every"], 10),
-          backend: contrarianBackend as "codex" | "claude",
+          backend: contrarianBackend as "codex" | "claude" | "grok",
           model: flags["contrarian-model"],
           tools: true, // contrarian always gets tools for research
         };

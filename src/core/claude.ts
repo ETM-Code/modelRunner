@@ -1,6 +1,7 @@
 import type { AgentConfig } from "./types";
 import { makeSandboxedEnv } from "./sandbox";
 import { RateLimitError, detectRateLimit } from "./errors";
+import { dirname } from "path";
 
 export async function runClaude(
   config: AgentConfig,
@@ -24,6 +25,20 @@ export async function runClaude(
     args.push("--max-cost", String(config.maxBudget));
   }
 
+  // Give Claude access to image directories and reference them in the prompt
+  if (config.images?.length) {
+    const dirs = new Set<string>();
+    for (const img of config.images) {
+      dirs.add(dirname(img));
+    }
+    for (const dir of dirs) {
+      args.push("--add-dir", dir);
+    }
+    // Prepend image file paths to the prompt so Claude reads them
+    const imageRefs = config.images.map((p) => `[Read and analyze this image: ${p}]`).join("\n");
+    prompt = `${imageRefs}\n\n${prompt}`;
+  }
+
   // Build environment
   let env: Record<string, string | undefined>;
   if (config.sandbox?.enabled) {
@@ -34,7 +49,8 @@ export async function runClaude(
   delete env.CLAUDECODE;
   delete env.CLAUDE_CODE_ENTRYPOINT;
 
-  args.push(prompt);
+  // -- stops the CLI from interpreting the prompt as flags (e.g. if it starts with ---)
+  args.push("--", prompt);
 
   const spawnOpts: any = {
     stdout: "pipe",
@@ -48,7 +64,7 @@ export async function runClaude(
   }
 
   // Use absolute path to avoid PATH issues when running as a daemon
-  const claudeBin = process.env.CLAUDE_BIN ?? "/Users/eoghancollins/.local/bin/claude";
+  const claudeBin = process.env.CLAUDE_BIN ?? `${process.env.HOME ?? "/Users/eoghancollins"}/.local/bin/claude`;
   const proc = Bun.spawn([claudeBin, ...args], spawnOpts);
 
   const stdout = await new Response(proc.stdout).text();

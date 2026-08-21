@@ -1,10 +1,11 @@
 export interface AgentConfig {
-  backend: "codex" | "claude";
+  backend: "codex" | "claude" | "grok";
   model?: string;
   systemPrompt?: string;
   tools?: boolean;
   maxBudget?: number;
   sandbox?: SandboxConfig;
+  images?: string[];
 }
 
 export interface SandboxConfig {
@@ -30,7 +31,7 @@ export interface DebateConfig {
 
 export interface ContrarianConfig {
   every: number;           // inject contrarian every N rounds
-  backend: "codex" | "claude";
+  backend: "codex" | "claude" | "grok";
   model?: string;
   tools?: boolean;
   sandbox?: SandboxConfig;

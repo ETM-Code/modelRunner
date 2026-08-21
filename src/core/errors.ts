@@ -1,3 +1,10 @@
+export class GrokUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GrokUnavailableError";
+  }
+}
+
 export class RateLimitError extends Error {
   retryAfterMs: number;
 
